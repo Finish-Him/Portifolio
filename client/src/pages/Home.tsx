@@ -88,8 +88,8 @@ const T: Record<Lang, Record<string, string>> = {
     nav_career: "Career",
     nav_links: "Links",
     nav_login: "Sign In",
-    badge_top1: "Top 1 Brazil",
-    badge_top8: "Top 8 Global",
+    badge_top1: "Manus Academy Top 1 Brazil",
+    badge_top8: "Manus Academy Top 30 Global",
     badge_remote: "Remote LATAM → US/EU",
     section_agents: "Production AI Agents",
     section_agents_desc: "Each agent is a complete system: architecture, orchestration, evaluation, and end-to-end deployment. Click to try live.",
@@ -122,7 +122,7 @@ const T: Record<Lang, Record<string, string>> = {
     career_detran2_desc: "Internal technical reference, tool development, documentation, Scrum, bridging technical and non-technical stakeholders.",
     section_links: "Links & Contact",
     footer_copy: "All rights reserved",
-    availability: "Available for remote work — LATAM → US/EU. Contractor or full-time. Fluent English.",
+    availability: "Available for remote work — LATAM → US/EU. Contractor or full-time.",
     contact_email: "moises.costa12345@gmail.com",
     scroll_explore: "Explore",
     back_to_top: "Back to top",
@@ -332,7 +332,7 @@ export default function Home() {
               className="h-9 w-9 rounded-xl shadow-lg shadow-blue-500/10 group-hover:shadow-blue-500/30 transition-shadow"
             />
             <span className="font-display font-bold text-lg bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent hidden sm:block">
-              MSc Academy
+              Moisés Costa · AI Engineer
             </span>
           </button>
 
@@ -788,7 +788,7 @@ export default function Home() {
                   <span className="px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30">Concursado 2013</span>
                 </div>
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  Aprovado no concurso público de 2013 · Posse em <strong className="text-blue-400">04 de Abril de 2014</strong> · Lotado na <strong className="text-blue-400">DTIC — Diretoria de Tecnologia da Informação e Comunicação</strong>. Responsável por modernização de sistemas legados, implementação de pipelines GenAI, APIs REST com FastAPI e liderança técnica em projetos estratégicos.
+                  Approved in the 2013 public competition · Possession on <strong className="text-blue-400">April 4, 2014</strong> · Worked at <strong className="text-blue-400">DTIC — Directorate of Information and Communication Technology</strong>. Responsible for modernizing legacy systems, implementing GenAI pipelines, REST APIs with FastAPI and technical leadership in strategic projects.
                 </p>
               </div>
             </div>
