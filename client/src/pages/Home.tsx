@@ -546,8 +546,8 @@ export default function Home() {
                 {t.subheadline}
               </p>
 
-              {/* CTAs */}
-              <div className="flex flex-wrap gap-4">
+              {/* CTAs — Row 1 */}
+              <div className="flex flex-wrap gap-4 mb-3">
                 <Button
                   size="lg"
                   onClick={() => scrollTo("agents")}
@@ -567,6 +567,21 @@ export default function Home() {
                   <Button size="lg" variant="outline" className="border-slate-700/80 text-slate-300 hover:bg-blue-500/10 hover:border-blue-500/40 gap-2.5 text-base px-8 py-6 rounded-xl font-bold">
                     <Github className="h-5 w-5" />
                     {t.cta_github}
+                  </Button>
+                </a>
+              </div>
+              {/* CTAs — Row 2: HuggingFace + WhatsApp */}
+              <div className="flex flex-wrap gap-4">
+                <a href="https://huggingface.co/Finish-him" target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" variant="outline" className="border-orange-500/30 text-orange-300 hover:bg-orange-500/10 hover:border-orange-500/50 gap-2.5 text-base px-8 py-6 rounded-xl font-bold">
+                    <span className="text-lg leading-none">🤗</span>
+                    {t.hf_spaces}
+                  </Button>
+                </a>
+                <a href="https://wa.me/5521990741351" target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white gap-2.5 text-base px-8 py-6 rounded-xl font-bold border-0 shadow-xl shadow-green-900/30">
+                    <Phone className="h-5 w-5" />
+                    {t.whatsapp}
                   </Button>
                 </a>
               </div>

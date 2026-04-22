@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 import Atlas from "./pages/Atlas";
 import Artemis from "./pages/Artemis";
 import Chat from "./pages/Chat";
@@ -30,6 +31,7 @@ function Router() {
 
       {/* Blog */}
       <Route path="/blog" component={Blog} />
+      <Route path="/blog/:slug" component={({ params }) => <BlogPost slug={params.slug} />} />
 
       {/* Agentes — páginas de apresentação */}
       <Route path="/atlas" component={Atlas} />

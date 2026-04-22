@@ -132,3 +132,12 @@
 - [x] Página de Cadastro (Register)
 - [x] Navbar atualizada: Blog, Artemis Demo, Atlas Demo, Arquimedes Demo, Login, Criar Conta visíveis
 - [x] Testes e checkpoint v2.1 (15/15 passando)
+
+## Fase 11: Blog SEO + Hero CTAs v2.2
+- [x] HuggingFace e WhatsApp adicionados ao hero da Home (Seção Principal) — segunda linha de CTAs
+- [x] Blog completo com 5 artigos técnicos de AI Engineering (conteúdo real, não placeholder)
+- [x] Página de listagem do Blog com busca, filtro por categoria e post em destaque
+- [x] Página de artigo individual (/blog/:slug) com markdown, autor, posts relacionados
+- [x] Dados de artigos em /client/src/data/blogPosts.ts (estático, SEO-friendly)
+- [x] Rota /blog/:slug registrada no App.tsx
+- [x] Artigos publicados: LangGraph, RAG em Produção, Prompt Engineering, MCP, Full Stack AI, Detran-RJ Case Study
