@@ -39,9 +39,12 @@ async function startServer() {
   // Simple auth routes (hardcoded users)
   const { registerSimpleAuthRoutes } = await import("../simpleAuth");
   registerSimpleAuthRoutes(app);
-  // Streaming chat endpoint (SSE)
+  // Streaming chat endpoint (SSE) — Arquimedes
   const { registerStreamingRoute } = await import("../streaming");
   registerStreamingRoute(app);
+  // Atlas streaming endpoint (SSE) — Patrimônio DTIC
+  const { registerAtlasStreamingRoute } = await import("../atlasStreaming");
+  registerAtlasStreamingRoute(app);
 
   // tRPC API
   app.use(

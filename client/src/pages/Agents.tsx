@@ -95,15 +95,15 @@ const AGENTS = [
     activeBg: "bg-emerald-500/10",
     textColor: "text-emerald-400",
     icon: Package,
-    available: false,
+    available: true,
     chatHref: null,
-    placeholder: "Ask Atlas about asset management...",
-    systemPrompt: "You are Atlas, an AI agent specialized in IT asset management for government agencies. You help track, manage, and report on technology assets. Currently in development — full capabilities coming soon.",
+    placeholder: "Ask Atlas about DTIC asset management...",
+    systemPrompt: "You are Atlas, an AI agent specialized in IT asset management for DTIC/Detran-RJ.",
     suggestedPrompts: [
-      "What assets does DTIC manage?",
-      "How does automated reporting work?",
-      "Explain asset lifecycle management",
-      "What is PGvector used for?",
+      "How many IT assets does DTIC have in 2025?",
+      "What is the total asset value?",
+      "Which assets are not located?",
+      "What equipment is at external posts?",
     ],
   },
   {
@@ -208,10 +208,58 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
         }]);
         setStreamContent("");
       }
+    } else if (agent.id === "atlas") {
+      // Atlas — real SSE endpoint with DTIC patrimony data
+      try {
+        const history = messages.map((m) => ({ role: m.role, content: m.content }));
+        const res = await fetch("/api/atlas/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history }),
+        });
+
+        if (!res.ok || !res.body) throw new Error("Stream failed");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") break;
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.token) {
+                  accumulated += parsed.token;
+                  setStreamContent(accumulated);
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+        }
+
+        setMessages((prev) => [...prev, { role: "assistant", content: accumulated, timestamp: Date.now() }]);
+        setStreamContent("");
+      } catch {
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "Sorry, I encountered an error connecting to Atlas. Please try again.",
+          timestamp: Date.now(),
+        }]);
+        setStreamContent("");
+      }
     } else {
-      // Atlas & Artemis — simulated response (coming soon)
+      // Artemis — simulated response (coming soon)
       await new Promise((r) => setTimeout(r, 800));
-      const comingSoon = `I'm **${agent.name}**, and I'm currently in development! 🚀\n\nFull capabilities are coming soon. In the meantime, you can:\n- Try **Arquimedes** — our fully functional math agent\n- Check the [Blog](/blog) for technical articles about my architecture\n- Follow on [LinkedIn](https://www.linkedin.com/in/moises-costa-rj/) for updates\n\nYour question was: *"${text}"* — I'll be able to answer that soon!`;
+      const comingSoon = `I'm **${agent.name}**, and I'm currently in development! 🚀\n\nFull capabilities are coming soon. In the meantime, you can:\n- Try **Arquimedes** — our fully functional math agent\n- Try **Atlas** — our DTIC asset management agent\n- Check the [Blog](/blog) for technical articles about my architecture\n\nYour question was: *"${text}"* — I'll be able to answer that soon!`;
       setMessages((prev) => [...prev, { role: "assistant", content: comingSoon, timestamp: Date.now() }]);
       setStreamContent("");
     }
