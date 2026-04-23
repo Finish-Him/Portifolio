@@ -167,3 +167,12 @@
 - [x] Melhorar layout da página /agents (botões, cards, responsividade mobile)
 - [x] Otimizar streaming: menor latência, First Token mais rápido
 - [x] Atualizar testes para incluir Artemis e Detran-RJ (69 Vitest passando)
+
+## Fase 15: Reestruturação Hero + Navbar + Seção Links
+
+- [x] Hero: remover 6 botões de links, deixar apenas CTA único "Try Live Agents" → /agents (destaque máximo)
+- [x] Navbar: remover botões individuais Arquimedes/Atlas/Artemis, adicionar botão "Agents" único → /agents
+- [x] Seção Links (final): expandir com Download CV, Email, todos os links sociais em cards visuais
+- [x] Botão Blog: manter na navbar e adicionar CTA de redirecionamento para Blog na seção final
+- [x] Atualizar testes E2E para refletir nova estrutura (13 testes passando)
+- [ ] Salvar checkpoint v2.15

@@ -28,19 +28,42 @@ test.describe("Home Page", () => {
     await expect(btn.first()).toBeVisible();
   });
 
-  test("shows Download CV button", async ({ page }) => {
+  test("Try Live Agents CTA links to /agents", async ({ page }) => {
+    // The CTA should be a link pointing to /agents
+    const link = page.locator("a[href='/agents']");
+    await expect(link.first()).toBeVisible();
+  });
+
+  test("navbar shows single Agents button linking to /agents", async ({ page }) => {
+    const agentsBtn = page.locator("nav a[href='/agents']");
+    await expect(agentsBtn.first()).toBeVisible();
+  });
+
+  test("links section shows Download CV card", async ({ page }) => {
+    // Scroll to links section first
+    await page.locator("#links").scrollIntoViewIfNeeded();
     const btn = page.locator("text=Download CV");
     await expect(btn.first()).toBeVisible();
   });
 
-  test("shows WhatsApp button", async ({ page }) => {
+  test("links section shows WhatsApp card", async ({ page }) => {
+    await page.locator("#links").scrollIntoViewIfNeeded();
     const btn = page.locator("text=WhatsApp");
     await expect(btn.first()).toBeVisible();
   });
 
-  test("shows HuggingFace button", async ({ page }) => {
+  test("links section shows Hugging Face card", async ({ page }) => {
+    await page.locator("#links").scrollIntoViewIfNeeded();
     const btn = page.locator("text=Hugging Face");
     await expect(btn.first()).toBeVisible();
+  });
+
+  test("links section has Try Agents and Read Blog CTAs", async ({ page }) => {
+    await page.locator("#links").scrollIntoViewIfNeeded();
+    const agentsCta = page.locator("#links a[href='/agents']");
+    const blogCta = page.locator("#links a[href='/blog']");
+    await expect(agentsCta.first()).toBeVisible();
+    await expect(blogCta.first()).toBeVisible();
   });
 
   test("navbar shows MSc Academy logo", async ({ page }) => {
