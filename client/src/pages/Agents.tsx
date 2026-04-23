@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Bot, Package, Scale, Send,
-  Sparkles, Globe, RotateCcw, ExternalLink, Loader2
+  Sparkles, Globe, RotateCcw, ExternalLink, Loader2, Car
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,8 +74,10 @@ const AGENTS = [
     icon: Bot,
     available: true,
     chatHref: "/arquimedes/chat",
+    endpoint: "/api/chat/stream",
+    bodyField: "content",  // field name for the message
     placeholder: "Ask Arquimedes a math question...",
-    systemPrompt: "You are Arquimedes, a friendly and patient math tutor AI. You help students learn mathematics through clear explanations, step-by-step solutions, and encouraging feedback. You specialize in arithmetic, fractions, percentages, sets, and the rule of three. Always be encouraging and use simple language. When solving problems, show your work step by step.",
+    stack: ["LangChain", "React", "tRPC", "SSE", "TTS", "MySQL"],
     suggestedPrompts: [
       "Explain fractions with a simple example",
       "How do I calculate 15% of 200?",
@@ -97,8 +99,10 @@ const AGENTS = [
     icon: Package,
     available: true,
     chatHref: null,
+    endpoint: "/api/atlas/stream",
+    bodyField: "message",
     placeholder: "Ask Atlas about DTIC asset management...",
-    systemPrompt: "You are Atlas, an AI agent specialized in IT asset management for DTIC/Detran-RJ.",
+    stack: ["LangGraph", "FastAPI", "PostgreSQL", "Supabase", "PGvector"],
     suggestedPrompts: [
       "How many IT assets does DTIC have in 2025?",
       "What is the total asset value?",
@@ -109,8 +113,8 @@ const AGENTS = [
   {
     id: "artemis",
     name: "Artemis",
-    tagline: "Brazilian Bar Exam Prep",
-    description: "Specialized agent for Brazilian Bar Exam (OAB) preparation. Questions, mock exams and contextualized explanations using RAG.",
+    tagline: "Brazilian Bar Exam Prep (OAB)",
+    description: "Specialized agent for Brazilian Bar Exam (OAB) 2nd Phase preparation. Questions, mock exams and contextualized explanations on Constitutional Law.",
     avatar: "/manus-storage/ArtemisPrincipal_e1733188.png",
     gradient: "from-amber-500 via-orange-500 to-amber-600",
     glow: "shadow-amber-500/30",
@@ -118,15 +122,42 @@ const AGENTS = [
     activeBg: "bg-amber-500/10",
     textColor: "text-amber-400",
     icon: Scale,
-    available: false,
+    available: true,
     chatHref: null,
-    placeholder: "Ask Artemis about OAB exam topics...",
-    systemPrompt: "You are Artemis, an AI agent specialized in Brazilian Bar Exam (OAB) preparation. You help law students study constitutional law, civil law, criminal law, and procedural law. Currently in development — full RAG capabilities coming soon.",
+    endpoint: "/api/artemis/stream",
+    bodyField: "message",
+    placeholder: "Ask Artemis about OAB / Constitutional Law...",
+    stack: ["RAG", "LangChain", "PGvector", "React", "FastAPI"],
     suggestedPrompts: [
-      "What topics are on the OAB exam?",
-      "Explain constitutional principles",
-      "What is habeas corpus?",
-      "How to prepare for OAB in 3 months?",
+      "What are the fundamental rights in the Brazilian Constitution?",
+      "Explain the principle of human dignity",
+      "What is habeas corpus and when to use it?",
+      "How to structure a constitutional law petition?",
+    ],
+  },
+  {
+    id: "detran",
+    name: "Detran-RJ",
+    tagline: "Citizen Support — Detran-RJ",
+    description: "Agente virtual especializado em todos os serviços do Detran-RJ: CNH, CRLV, IPVA, transferências, multas, endereços e procedimentos.",
+    avatar: "/manus-storage/detran-logo-horizontal_e5be66da.png",
+    gradient: "from-green-500 via-teal-500 to-green-600",
+    glow: "shadow-green-500/30",
+    border: "border-green-500/40",
+    activeBg: "bg-green-500/10",
+    textColor: "text-green-400",
+    icon: Car,
+    available: true,
+    chatHref: null,
+    endpoint: "/api/detran/stream",
+    bodyField: "message",
+    placeholder: "Pergunte sobre CNH, CRLV, IPVA, multas...",
+    stack: ["LangChain", "RAG", "Express", "SSE", "MySQL"],
+    suggestedPrompts: [
+      "Como renovar minha CNH?",
+      "Como emitir o CRLV digital?",
+      "Como consultar e pagar multas?",
+      "Quais os endereços das ciretrans do RJ?",
     ],
   },
 ];
@@ -138,6 +169,63 @@ interface Message {
   timestamp: number;
 }
 
+// ─── SSE streaming helper ────────────────────────────────────────────────────
+async function streamSSE(
+  endpoint: string,
+  bodyField: string,
+  text: string,
+  history: { role: string; content: string }[],
+  onToken: (token: string) => void,
+  signal?: AbortSignal
+): Promise<string> {
+  const body: Record<string, unknown> = { history };
+  body[bodyField] = text;
+  // Arquimedes uses 'content' and doesn't support history in the same way
+  if (bodyField === "content") {
+    delete body.history;
+  }
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok || !res.body) throw new Error(`Stream failed: ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = "";
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") return accumulated;
+        try {
+          const parsed = JSON.parse(data);
+          // Support both {token: "..."} and {type:"token", content:"..."}
+          const delta = parsed.token ?? parsed.content ?? null;
+          if (delta) {
+            accumulated += delta;
+            onToken(accumulated);
+          }
+        } catch {
+          // ignore parse errors on non-JSON lines
+        }
+      }
+    }
+  }
+  return accumulated;
+}
+
 // ─── Single agent chat panel ─────────────────────────────────────────────────
 function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -146,6 +234,7 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
   const [streamContent, setStreamContent] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -160,115 +249,38 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
     setIsLoading(true);
     setStreamContent("");
 
-    // For Arquimedes — use real SSE endpoint
-    if (agent.id === "arquimedes") {
-      try {
-        const history = messages.map((m) => ({ role: m.role, content: m.content }));
-        const res = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
-        });
+    // Abort any previous request
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
 
-        if (!res.ok || !res.body) throw new Error("Stream failed");
+    try {
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const accumulated = await streamSSE(
+        agent.endpoint,
+        agent.bodyField,
+        text,
+        history,
+        (partial) => setStreamContent(partial),
+        abortRef.current.signal
+      );
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6).trim();
-              if (data === "[DONE]") break;
-              try {
-                const parsed = JSON.parse(data);
-                // endpoint returns {type:"token", content:"..."}
-                const delta = parsed.content ?? parsed.token ?? null;
-                if (delta) {
-                  accumulated += delta;
-                  setStreamContent(accumulated);
-                }
-              } catch {
-                // ignore parse errors
-              }
-            }
-          }
-        }
-
-        setMessages((prev) => [...prev, { role: "assistant", content: accumulated, timestamp: Date.now() }]);
-        setStreamContent("");
-      } catch {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-          timestamp: Date.now(),
-        }]);
-        setStreamContent("");
-      }
-    } else if (agent.id === "atlas") {
-      // Atlas — real SSE endpoint with DTIC patrimony data
-      try {
-        const history = messages.map((m) => ({ role: m.role, content: m.content }));
-        const res = await fetch("/api/atlas/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, history }),
-        });
-
-        if (!res.ok || !res.body) throw new Error("Stream failed");
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.token) {
-                  accumulated += parsed.token;
-                  setStreamContent(accumulated);
-                }
-              } catch {
-                // ignore parse errors
-              }
-            }
-          }
-        }
-
-        setMessages((prev) => [...prev, { role: "assistant", content: accumulated, timestamp: Date.now() }]);
-        setStreamContent("");
-      } catch {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "Sorry, I encountered an error connecting to Atlas. Please try again.",
-          timestamp: Date.now(),
-        }]);
-        setStreamContent("");
-      }
-    } else {
-      // Artemis — simulated response (coming soon)
-      await new Promise((r) => setTimeout(r, 800));
-      const comingSoon = `I'm **${agent.name}**, and I'm currently in development! 🚀\n\nFull capabilities are coming soon. In the meantime, you can:\n- Try **Arquimedes** — our fully functional math agent\n- Try **Atlas** — our DTIC asset management agent\n- Check the [Blog](/blog) for technical articles about my architecture\n\nYour question was: *"${text}"* — I'll be able to answer that soon!`;
-      setMessages((prev) => [...prev, { role: "assistant", content: comingSoon, timestamp: Date.now() }]);
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: accumulated || "Sorry, I could not generate a response. Please try again.",
+        timestamp: Date.now(),
+      }]);
       setStreamContent("");
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Sorry, I encountered an error. Please try again.",
+        timestamp: Date.now(),
+      }]);
+      setStreamContent("");
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   }, [agent, messages, isLoading]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -279,9 +291,11 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
   };
 
   const reset = () => {
+    abortRef.current?.abort();
     setMessages([]);
     setStreamContent("");
     setInput("");
+    setIsLoading(false);
   };
 
   return (
@@ -296,17 +310,12 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
             </div>
             <h3 className="text-white font-display font-bold text-lg mb-1">{agent.name}</h3>
             <p className="text-slate-400 text-sm mb-6 max-w-xs">{agent.tagline}</p>
-            {!agent.available && (
-              <div className="mb-4 px-3 py-1.5 rounded-full bg-slate-800/60 border border-slate-700/40 text-slate-400 text-xs font-medium">
-                🚧 In Development — Frontend Preview
-              </div>
-            )}
             <div className="grid grid-cols-1 gap-2 w-full max-w-xs">
               {agent.suggestedPrompts.map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
-                  className={`text-left px-3 py-2 rounded-xl bg-white/5 border border-slate-700/40 text-slate-300 text-xs hover:bg-white/10 hover:${agent.border} transition-all`}
+                  className={`text-left px-3 py-2 rounded-xl bg-white/5 border border-slate-700/40 text-slate-300 text-xs hover:bg-white/10 transition-all`}
                 >
                   {prompt}
                 </button>
@@ -322,7 +331,7 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
             )}
             <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
               msg.role === "user"
-                ? "bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-br-sm"
+                ? `bg-gradient-to-br ${agent.gradient} text-white rounded-br-sm`
                 : "bg-[#0c1629]/80 border border-slate-800/60 text-slate-200 rounded-bl-sm"
             }`}>
               {msg.role === "assistant" ? (
@@ -394,6 +403,7 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
               variant="outline"
               onClick={reset}
               className="border-slate-700/60 text-slate-500 hover:text-white h-[42px] px-2.5 rounded-xl"
+              title="Clear conversation"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
@@ -449,33 +459,25 @@ export default function Agents() {
       </div>
 
       {/* ── Agent selector tabs ──────────────────────────────────────────── */}
-      <div className="border-b border-slate-800/60 bg-[#060d1b]/80 backdrop-blur-sm">
+      <div className="border-b border-slate-800/60 bg-[#060d1b]/80 backdrop-blur-sm overflow-x-auto">
         <div className="container">
-          <div className="flex gap-0">
+          <div className="flex gap-0 min-w-max">
             {AGENTS.map((a, i) => {
               const Icon = a.icon;
               return (
                 <button
                   key={a.id}
                   onClick={() => setActiveAgent(i)}
-                  className={`relative flex items-center gap-2.5 px-5 py-4 text-sm font-semibold transition-all border-b-2 ${
+                  className={`relative flex items-center gap-2 px-4 py-3.5 text-sm font-semibold transition-all border-b-2 whitespace-nowrap ${
                     activeAgent === i
                       ? `${a.textColor} border-current bg-white/5`
                       : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-white/5"
                   }`}
                 >
-                  <div className="relative">
+                  <div className="relative flex-shrink-0">
                     <img src={a.avatar} alt={a.name} className="w-6 h-6 rounded-lg object-cover" />
-                    {!a.available && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 border border-[#060d1b]" />
-                    )}
                   </div>
                   <span>{a.name}</span>
-                  {!a.available && (
-                    <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-normal">
-                      Soon
-                    </span>
-                  )}
                   {activeAgent === i && (
                     <motion.div
                       layoutId="agent-tab-indicator"
@@ -516,11 +518,6 @@ export default function Agents() {
                       alt={agent.name}
                       className="relative w-full max-w-[200px] mx-auto aspect-square rounded-2xl object-cover shadow-2xl border border-slate-700/40"
                     />
-                    {!agent.available && (
-                      <div className="absolute top-2 right-2 sm:right-[calc(50%-100px+8px)] px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold">
-                        In Dev
-                      </div>
-                    )}
                   </div>
 
                   {/* Name & tagline */}
@@ -530,16 +527,17 @@ export default function Agents() {
 
                   {/* Stack tags */}
                   <div className="flex flex-wrap gap-1.5 mb-5">
-                    {(agent.id === "arquimedes"
-                      ? ["LangChain", "React", "tRPC", "SSE", "TTS", "MySQL"]
-                      : agent.id === "atlas"
-                      ? ["LangGraph", "FastAPI", "PostgreSQL", "Supabase", "PGvector"]
-                      : ["RAG", "LangChain", "PGvector", "React", "FastAPI"]
-                    ).map((tech) => (
+                    {agent.stack.map((tech) => (
                       <span key={tech} className="px-2 py-0.5 rounded-md bg-white/5 text-slate-400 text-xs border border-slate-700/40 font-mono">
                         {tech}
                       </span>
                     ))}
+                  </div>
+
+                  {/* Status badge */}
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${agent.border} ${agent.activeBg} mb-4`}>
+                    <div className={`w-2 h-2 rounded-full bg-gradient-to-r ${agent.gradient} animate-pulse`} />
+                    <span className={`text-xs font-semibold ${agent.textColor}`}>Online · Ready to chat</span>
                   </div>
 
                   {/* CTA */}
@@ -573,12 +571,12 @@ export default function Agents() {
                 <div className={`flex items-center gap-3 px-4 py-3 border-b border-slate-800/60 bg-[#060d1b]/40`}>
                   <div className="relative">
                     <img src={agent.avatar} alt={agent.name} className="w-8 h-8 rounded-xl object-cover" />
-                    <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#060d1b] ${agent.available ? "bg-emerald-400" : "bg-amber-400"}`} />
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#060d1b] bg-emerald-400`} />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-white">{agent.name}</p>
-                    <p className={`text-xs ${agent.available ? "text-emerald-400" : "text-amber-400"}`}>
-                      {agent.available ? "Online · Ready to chat" : "In Development · Preview mode"}
+                    <p className={`text-xs text-emerald-400`}>
+                      Online · Ready to chat
                     </p>
                   </div>
                   <div className="ml-auto flex items-center gap-1.5">

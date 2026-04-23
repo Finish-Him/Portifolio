@@ -157,3 +157,13 @@
 - [x] Testes E2E: Chat do Arquimedes envia mensagem e recebe resposta
 - [x] Testes E2E: Formulário de contato submissão com sucesso
 - [x] Testes E2E: Download do CV
+
+## Fase 14: Artemis OAB + Detran-RJ + Melhorias /agents
+
+- [x] Salvar chaves de API como secrets (Anthropic, OpenAI, Gemini, OpenRouter, HuggingFace)
+- [x] Criar endpoint SSE /api/artemis/stream (OAB 2ª Fase / Direito Constitucional)
+- [x] Criar endpoint SSE /api/detran/stream (Suporte Detran-RJ completo)
+- [x] Adicionar agente Detran-RJ na página /agents com aba e avatar
+- [x] Melhorar layout da página /agents (botões, cards, responsividade mobile)
+- [x] Otimizar streaming: menor latência, First Token mais rápido
+- [x] Atualizar testes para incluir Artemis e Detran-RJ (69 Vitest passando)

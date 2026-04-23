@@ -45,6 +45,12 @@ async function startServer() {
   // Atlas streaming endpoint (SSE) — Patrimônio DTIC
   const { registerAtlasStreamingRoute } = await import("../atlasStreaming");
   registerAtlasStreamingRoute(app);
+  // Artemis streaming endpoint (SSE) — OAB 2ª Fase / Direito Constitucional
+  const { registerArtemisStreaming } = await import("../artemisStreaming");
+  registerArtemisStreaming(app);
+  // Detran-RJ streaming endpoint (SSE) — Suporte ao Cidadão
+  const { registerDetranStreaming } = await import("../detranStreaming");
+  registerDetranStreaming(app);
 
   // tRPC API
   app.use(

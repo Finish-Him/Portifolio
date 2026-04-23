@@ -51,6 +51,25 @@ test.describe("Agents Chat Interface", () => {
     await expect(artemisContent).toBeVisible();
   });
 
+  test("Detran-RJ tab switches agent", async ({ page }) => {
+    const detranTab = page.locator("button:has-text('Detran')").first();
+    await detranTab.click();
+    await page.waitForTimeout(300);
+    const detranContent = page.locator("text=Detran").first();
+    await expect(detranContent).toBeVisible();
+  });
+
+  test("agents page shows 4 agent tabs", async ({ page }) => {
+    const arquimedesTab = page.locator("button:has-text('Arquimedes')").first();
+    const atlasTab = page.locator("button:has-text('Atlas')").first();
+    const artemisTab = page.locator("button:has-text('Artemis')").first();
+    const detranTab = page.locator("button:has-text('Detran')").first();
+    await expect(arquimedesTab).toBeVisible();
+    await expect(atlasTab).toBeVisible();
+    await expect(artemisTab).toBeVisible();
+    await expect(detranTab).toBeVisible();
+  });
+
   test("sends a message and input clears", async ({ page }) => {
     const input = page.locator("input[type='text'], textarea").first();
     await input.fill("Hello Arquimedes!");

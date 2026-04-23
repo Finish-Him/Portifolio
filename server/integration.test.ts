@@ -256,6 +256,50 @@ describe("HTTP Endpoints", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /api/artemis/stream returns 200 with SSE content-type", async () => {
+    const res = await fetch(`${BASE}/api/artemis/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "What is habeas corpus?" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    res.body?.cancel();
+  });
+
+  it("POST /api/artemis/stream returns SSE error without message", async () => {
+    const res = await fetch(`${BASE}/api/artemis/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("error");
+  });
+
+  it("POST /api/detran/stream returns 200 with SSE content-type", async () => {
+    const res = await fetch(`${BASE}/api/detran/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Como renovar a CNH?" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    res.body?.cancel();
+  });
+
+  it("POST /api/detran/stream returns SSE error without message", async () => {
+    const res = await fetch(`${BASE}/api/detran/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("error");
+  });
+
   it("GET /api/trpc/auth.me returns valid JSON", async () => {
     const res = await fetch(`${BASE}/api/trpc/auth.me`);
     expect(res.status).toBe(200);
