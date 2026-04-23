@@ -144,16 +144,16 @@
 
 ## Fase 13: Suíte Completa de Testes
 
-- [ ] Instalar Playwright e configurar para E2E
-- [ ] Testes unitários: db helpers (saveContactLead, getTopics, etc.)
-- [ ] Testes unitários: atlasStreaming system prompt builder
-- [ ] Testes unitários: streaming.ts helpers
-- [ ] Testes de integração: tRPC contact.submitContact
-- [ ] Testes de integração: tRPC auth.me (autenticado e não autenticado)
-- [ ] Testes de integração: endpoint SSE /api/chat/stream
-- [ ] Testes de integração: endpoint SSE /api/atlas/stream
-- [ ] Testes E2E: Home page carrega corretamente
-- [ ] Testes E2E: Navegação entre páginas (Blog, Agents)
-- [ ] Testes E2E: Chat do Arquimedes envia mensagem e recebe resposta
-- [ ] Testes E2E: Formulário de contato submissão com sucesso
-- [ ] Testes E2E: Download do CV
+- [x] Instalar Playwright e configurar para E2E
+- [x] Testes unitários: db helpers (saveContactLead, getTopics, etc.)
+- [x] Testes unitários: atlasStreaming system prompt builder
+- [x] Testes unitários: streaming.ts helpers
+- [x] Testes de integração: tRPC contact.submitContact
+- [x] Testes de integração: tRPC auth.me (autenticado e não autenticado)
+- [x] Testes de integração: endpoint SSE /api/chat/stream
+- [x] Testes de integração: endpoint SSE /api/atlas/stream
+- [x] Testes E2E: Home page carrega corretamente
+- [x] Testes E2E: Navegação entre páginas (Blog, Agents)
+- [x] Testes E2E: Chat do Arquimedes envia mensagem e recebe resposta
+- [x] Testes E2E: Formulário de contato submissão com sucesso
+- [x] Testes E2E: Download do CV
