@@ -100,3 +100,30 @@ export const contactLeads = mysqlTable("contact_leads", {
 
 export type ContactLead = typeof contactLeads.$inferSelect;
 export type InsertContactLead = typeof contactLeads.$inferInsert;
+
+// Agents page chat sessions (Arquimedes, Atlas, Artemis, Detran-RJ)
+export const agentsChatSessions = mysqlTable("agents_chat_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),                          // NULL for anonymous users
+  sessionToken: varchar("sessionToken", { length: 64 }), // for anonymous users
+  agentId: varchar("agentId", { length: 32 }).notNull().default("arquimedes"),
+  messageCount: int("messageCount").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AgentsChatSession = typeof agentsChatSessions.$inferSelect;
+export type InsertAgentsChatSession = typeof agentsChatSessions.$inferInsert;
+
+// Agents page chat messages
+export const agentsChatMessages = mysqlTable("agents_chat_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+  content: text("content").notNull(),
+  latencyMs: int("latencyMs"),                    // response time in ms (assistant only)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AgentsChatMessage = typeof agentsChatMessages.$inferSelect;
+export type InsertAgentsChatMessage = typeof agentsChatMessages.$inferInsert;

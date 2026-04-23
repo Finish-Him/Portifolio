@@ -8,6 +8,8 @@ import {
   chatMessages, InsertChatMessage,
   userProgress, InsertUserProgress,
   contactLeads, InsertContactLead,
+  agentsChatSessions, InsertAgentsChatSession, AgentsChatSession,
+  agentsChatMessages, InsertAgentsChatMessage, AgentsChatMessage,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -192,4 +194,121 @@ export async function upsertUserProgress(data: { userId: number; topicId: number
       })
       .where(eq(userProgress.id, p.id));
   }
+}
+
+// ─── Agents Chat (page /agents) ───────────────────────────────────────────────
+
+/** Create or reuse a session for a given agent + user/token combo */
+export async function getOrCreateAgentsSession(params: {
+  agentId: string;
+  userId?: number | null;
+  sessionToken?: string | null;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Try to find an existing session (last 24h)
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const where = params.userId
+    ? and(
+        eq(agentsChatSessions.agentId, params.agentId),
+        eq(agentsChatSessions.userId, params.userId),
+        sql`${agentsChatSessions.updatedAt} > ${cutoff}`
+      )
+    : params.sessionToken
+    ? and(
+        eq(agentsChatSessions.agentId, params.agentId),
+        eq(agentsChatSessions.sessionToken, params.sessionToken),
+        sql`${agentsChatSessions.updatedAt} > ${cutoff}`
+      )
+    : null;
+
+  if (where) {
+    const existing = await db
+      .select({ id: agentsChatSessions.id })
+      .from(agentsChatSessions)
+      .where(where)
+      .orderBy(desc(agentsChatSessions.updatedAt))
+      .limit(1);
+    if (existing.length > 0) return existing[0].id;
+  }
+
+  // Create a new session
+  const [result] = await db.insert(agentsChatSessions).values({
+    agentId: params.agentId,
+    userId: params.userId ?? null,
+    sessionToken: params.sessionToken ?? null,
+    messageCount: 0,
+  });
+  return (result as any).insertId as number;
+}
+
+/** Save a single message to the agents chat */
+export async function saveAgentsChatMessage(params: {
+  sessionId: number;
+  role: "user" | "assistant";
+  content: string;
+  latencyMs?: number | null;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(agentsChatMessages).values({
+    sessionId: params.sessionId,
+    role: params.role,
+    content: params.content,
+    latencyMs: params.latencyMs ?? null,
+  });
+  // Increment message count
+  await db
+    .update(agentsChatSessions)
+    .set({ messageCount: sql`${agentsChatSessions.messageCount} + 1` })
+    .where(eq(agentsChatSessions.id, params.sessionId));
+}
+
+/** Load the last N messages for a session */
+export async function getAgentsChatHistory(params: {
+  sessionId: number;
+  limit?: number;
+}): Promise<AgentsChatMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(agentsChatMessages)
+    .where(eq(agentsChatMessages.sessionId, params.sessionId))
+    .orderBy(asc(agentsChatMessages.createdAt))
+    .limit(params.limit ?? 50);
+  return rows;
+}
+
+/** Find the most recent session for a given agent + user/token */
+export async function findAgentsSession(params: {
+  agentId: string;
+  userId?: number | null;
+  sessionToken?: string | null;
+}): Promise<AgentsChatSession | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const where = params.userId
+    ? and(
+        eq(agentsChatSessions.agentId, params.agentId),
+        eq(agentsChatSessions.userId, params.userId),
+        sql`${agentsChatSessions.updatedAt} > ${cutoff}`
+      )
+    : params.sessionToken
+    ? and(
+        eq(agentsChatSessions.agentId, params.agentId),
+        eq(agentsChatSessions.sessionToken, params.sessionToken),
+        sql`${agentsChatSessions.updatedAt} > ${cutoff}`
+      )
+    : null;
+  if (!where) return null;
+  const rows = await db
+    .select()
+    .from(agentsChatSessions)
+    .where(where)
+    .orderBy(desc(agentsChatSessions.updatedAt))
+    .limit(1);
+  return rows[0] ?? null;
 }

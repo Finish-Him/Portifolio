@@ -1,13 +1,26 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Bot, Package, Scale, Send,
-  Sparkles, Globe, RotateCcw, ExternalLink, Loader2, Car
+  Sparkles, Globe, RotateCcw, ExternalLink, Loader2, Car,
+  Copy, Check, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Streamdown } from "streamdown";
+import { trpc } from "@/lib/trpc";
+
+// ─── Session token for anonymous users ───────────────────────────────────────
+function getAnonToken(): string {
+  const key = "msc_agents_anon_token";
+  let token = localStorage.getItem(key);
+  if (!token) {
+    token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(key, token);
+  }
+  return token;
+}
 
 // ─── Typing indicator component ──────────────────────────────────────────────
 function TypingIndicator({ agentName, agentAvatar, gradient }: {
@@ -25,7 +38,6 @@ function TypingIndicator({ agentName, agentAvatar, gradient }: {
     >
       <div className="relative flex-shrink-0">
         <img src={agentAvatar} alt={agentName} className="w-8 h-8 rounded-xl object-cover mt-1" />
-        {/* Pulsing ring around avatar */}
         <motion.div
           className={`absolute -inset-1 rounded-xl bg-gradient-to-r ${gradient} opacity-40`}
           animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.15, 0.4] }}
@@ -33,28 +45,41 @@ function TypingIndicator({ agentName, agentAvatar, gradient }: {
         />
       </div>
       <div className="rounded-2xl rounded-bl-sm px-4 py-3 bg-[#0c1629]/80 border border-slate-800/60 flex items-center gap-3">
-        {/* Three dots */}
         <div className="flex items-center gap-1.5">
           {[0, 1, 2].map((i) => (
             <motion.div
               key={i}
               className={`w-2 h-2 rounded-full bg-gradient-to-r ${gradient}`}
               animate={{ y: [0, -5, 0], opacity: [0.6, 1, 0.6] }}
-              transition={{
-                repeat: Infinity,
-                duration: 0.8,
-                delay: i * 0.18,
-                ease: "easeInOut",
-              }}
+              transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.18, ease: "easeInOut" }}
             />
           ))}
         </div>
-        {/* Label */}
         <span className="text-xs text-slate-500 font-medium select-none">
           {agentName} is thinking…
         </span>
       </div>
     </motion.div>
+  );
+}
+
+// ─── Copy button ─────────────────────────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+  return (
+    <button
+      onClick={copy}
+      title={copied ? "Copied!" : "Copy response"}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-white/10 text-slate-500 hover:text-slate-300 flex-shrink-0"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
   );
 }
 
@@ -75,7 +100,7 @@ const AGENTS = [
     available: true,
     chatHref: "/arquimedes/chat",
     endpoint: "/api/chat/stream",
-    bodyField: "content",  // field name for the message
+    bodyField: "content",
     placeholder: "Ask Arquimedes a math question...",
     stack: ["LangChain", "React", "tRPC", "SSE", "TTS", "MySQL"],
     suggestedPrompts: [
@@ -167,6 +192,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  latencyMs?: number;
 }
 
 // ─── SSE streaming helper ────────────────────────────────────────────────────
@@ -180,10 +206,7 @@ async function streamSSE(
 ): Promise<string> {
   const body: Record<string, unknown> = { history };
   body[bodyField] = text;
-  // Arquimedes uses 'content' and doesn't support history in the same way
-  if (bodyField === "content") {
-    delete body.history;
-  }
+  if (bodyField === "content") delete body.history;
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -211,15 +234,9 @@ async function streamSSE(
         if (data === "[DONE]") return accumulated;
         try {
           const parsed = JSON.parse(data);
-          // Support both {token: "..."} and {type:"token", content:"..."}
           const delta = parsed.token ?? parsed.content ?? null;
-          if (delta) {
-            accumulated += delta;
-            onToken(accumulated);
-          }
-        } catch {
-          // ignore parse errors on non-JSON lines
-        }
+          if (delta) { accumulated += delta; onToken(accumulated); }
+        } catch { /* ignore */ }
       }
     }
   }
@@ -227,18 +244,31 @@ async function streamSSE(
 }
 
 // ─── Single agent chat panel ─────────────────────────────────────────────────
-function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
-  const [messages, setMessages] = useState<Message[]>([]);
+function AgentChat({ agent, sessionId, initialMessages }: {
+  agent: typeof AGENTS[0];
+  sessionId: number | null;
+  initialMessages: Message[];
+}) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamContent, setStreamContent] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<number | null>(sessionId);
+
+  // Keep sessionIdRef in sync
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  // Sync initial messages when agent changes
+  useEffect(() => { setMessages(initialMessages); }, [agent.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamContent]);
+
+  const saveMsg = trpc.agentsChat.saveMessage.useMutation();
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -249,27 +279,42 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
     setIsLoading(true);
     setStreamContent("");
 
-    // Abort any previous request
+    // Persist user message
+    if (sessionIdRef.current) {
+      saveMsg.mutate({ sessionId: sessionIdRef.current, role: "user", content: text });
+    }
+
     abortRef.current?.abort();
     abortRef.current = new AbortController();
+    const startTime = Date.now();
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const accumulated = await streamSSE(
-        agent.endpoint,
-        agent.bodyField,
-        text,
-        history,
+        agent.endpoint, agent.bodyField, text, history,
         (partial) => setStreamContent(partial),
         abortRef.current.signal
       );
 
-      setMessages((prev) => [...prev, {
+      const latencyMs = Date.now() - startTime;
+      const assistantMsg: Message = {
         role: "assistant",
         content: accumulated || "Sorry, I could not generate a response. Please try again.",
         timestamp: Date.now(),
-      }]);
+        latencyMs,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
       setStreamContent("");
+
+      // Persist assistant message with latency
+      if (sessionIdRef.current) {
+        saveMsg.mutate({
+          sessionId: sessionIdRef.current,
+          role: "assistant",
+          content: assistantMsg.content,
+          latencyMs,
+        });
+      }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return;
       setMessages((prev) => [...prev, {
@@ -281,13 +326,10 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
     } finally {
       setIsLoading(false);
     }
-  }, [agent, messages, isLoading]);
+  }, [agent, messages, isLoading, saveMsg]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   };
 
   const reset = () => {
@@ -315,7 +357,7 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
-                  className={`text-left px-4 py-3 rounded-xl bg-white/5 border border-slate-700/40 text-slate-300 text-sm hover:bg-white/10 transition-all`}
+                  className="text-left px-4 py-3 rounded-xl bg-white/5 border border-slate-700/40 text-slate-300 text-sm hover:bg-white/10 transition-all"
                 >
                   {prompt}
                 </button>
@@ -329,32 +371,43 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
             {msg.role === "assistant" && (
               <img src={agent.avatar} alt={agent.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0 mt-1" />
             )}
-            <div className={`max-w-[80%] rounded-2xl px-5 py-3.5 text-base leading-relaxed ${
-              msg.role === "user"
-                ? `bg-gradient-to-br ${agent.gradient} text-white rounded-br-sm`
-                : "bg-[#0c1629]/80 border border-slate-800/60 text-slate-200 rounded-bl-sm"
-            }`}>
-              {msg.role === "assistant" ? (
-                <div className="prose prose-invert prose-base max-w-none prose-p:my-1.5 prose-headings:my-2 prose-code:text-cyan-300 prose-code:bg-slate-800/80 prose-code:px-1.5 prose-code:rounded prose-a:text-blue-400 prose-li:my-0.5">
-                  <Streamdown>{msg.content}</Streamdown>
+            <div className="flex flex-col gap-1 max-w-[80%]">
+              <div className={`group relative rounded-2xl px-5 py-3.5 text-base leading-relaxed ${
+                msg.role === "user"
+                  ? `bg-gradient-to-br ${agent.gradient} text-white rounded-br-sm`
+                  : "bg-[#0c1629]/80 border border-slate-800/60 text-slate-200 rounded-bl-sm"
+              }`}>
+                {msg.role === "assistant" ? (
+                  <>
+                    {/* Copy button — top right, visible on hover */}
+                    <div className="absolute top-2 right-2">
+                      <CopyButton text={msg.content} />
+                    </div>
+                    <div className="prose prose-invert prose-base max-w-none prose-p:my-1.5 prose-headings:my-2 prose-code:text-cyan-300 prose-code:bg-slate-800/80 prose-code:px-1.5 prose-code:rounded prose-a:text-blue-400 prose-li:my-0.5 pr-6">
+                      <Streamdown>{msg.content}</Streamdown>
+                    </div>
+                  </>
+                ) : msg.content}
+              </div>
+              {/* Latency badge — only for assistant messages */}
+              {msg.role === "assistant" && msg.latencyMs !== undefined && (
+                <div className="flex items-center gap-1 text-[11px] text-slate-600 pl-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Responded in {(msg.latencyMs / 1000).toFixed(1)}s</span>
                 </div>
-              ) : msg.content}
+              )}
             </div>
           </div>
         ))}
 
-        {/* Typing indicator — shown while waiting for first token */}
+        {/* Typing indicator */}
         <AnimatePresence>
           {isLoading && !streamContent && (
-            <TypingIndicator
-              agentName={agent.name}
-              agentAvatar={agent.avatar}
-              gradient={agent.gradient}
-            />
+            <TypingIndicator agentName={agent.name} agentAvatar={agent.avatar} gradient={agent.gradient} />
           )}
         </AnimatePresence>
 
-        {/* Streaming content — shown once tokens start arriving */}
+        {/* Streaming content */}
         <AnimatePresence>
           {isLoading && streamContent && (
             <motion.div
@@ -368,7 +421,6 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
                 <div className="prose prose-invert prose-base max-w-none prose-p:my-1.5 prose-code:text-cyan-300 prose-code:bg-slate-800/80 prose-code:px-1.5 prose-code:rounded prose-a:text-blue-400 prose-li:my-0.5">
                   <Streamdown>{streamContent}</Streamdown>
                 </div>
-                {/* Blinking cursor at end of stream */}
                 <motion.span
                   className="inline-block w-0.5 h-3.5 bg-slate-400 ml-0.5 align-middle"
                   animate={{ opacity: [1, 0, 1] }}
@@ -414,11 +466,7 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
             disabled={!input.trim() || isLoading}
             className={`bg-gradient-to-r ${agent.gradient} text-white border-0 h-[48px] px-5 rounded-xl shadow-lg disabled:opacity-60 transition-all`}
           >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
         <p className="text-xs text-slate-600 mt-1.5 text-center">
@@ -433,6 +481,24 @@ function AgentChat({ agent }: { agent: typeof AGENTS[0] }) {
 export default function Agents() {
   const [activeAgent, setActiveAgent] = useState(0);
   const agent = AGENTS[activeAgent];
+  const [anonToken] = useState(() => {
+    if (typeof window !== "undefined") return getAnonToken();
+    return "";
+  });
+
+  // Load session + history for the active agent
+  const sessionQuery = trpc.agentsChat.getSession.useQuery(
+    { agentId: agent.id, sessionToken: anonToken },
+    { staleTime: 60_000, refetchOnWindowFocus: false }
+  );
+
+  const sessionId = sessionQuery.data?.sessionId ?? null;
+  const initialMessages: Message[] = (sessionQuery.data?.messages ?? []).map((m) => ({
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+    latencyMs: m.latencyMs,
+  }));
 
   return (
     <div className="min-h-screen bg-[#060d1b] text-white flex flex-col">
@@ -495,7 +561,7 @@ export default function Agents() {
       <div className="flex-1 container py-4">
         <div className="grid lg:grid-cols-4 gap-5 h-full" style={{ minHeight: "calc(100vh - 180px)" }}>
 
-          {/* Left: Agent info panel — compact sidebar */}
+          {/* Left: Agent info panel */}
           <div className="lg:col-span-1">
             <AnimatePresence mode="wait">
               <motion.div
@@ -506,11 +572,8 @@ export default function Agents() {
                 transition={{ duration: 0.3 }}
                 className="rounded-2xl border border-slate-800/60 bg-[#0c1629]/60 backdrop-blur-sm overflow-hidden h-full"
               >
-                {/* Top gradient bar */}
                 <div className={`h-1.5 w-full bg-gradient-to-r ${agent.gradient}`} />
-
                 <div className="p-4">
-                  {/* Avatar — smaller to save space */}
                   <div className="relative mb-4">
                     <div className={`absolute -inset-2 bg-gradient-to-r ${agent.gradient} rounded-2xl blur opacity-20`} />
                     <img
@@ -519,13 +582,9 @@ export default function Agents() {
                       className="relative w-full max-w-[140px] mx-auto aspect-square rounded-2xl object-cover shadow-2xl border border-slate-700/40"
                     />
                   </div>
-
-                  {/* Name & tagline */}
                   <h2 className="text-lg font-display font-extrabold text-white mb-1">{agent.name}</h2>
                   <p className={`text-xs font-semibold mb-2 ${agent.textColor}`}>{agent.tagline}</p>
                   <p className="text-slate-400 text-xs leading-relaxed mb-4">{agent.description}</p>
-
-                  {/* Stack tags */}
                   <div className="flex flex-wrap gap-1 mb-4">
                     {agent.stack.map((tech) => (
                       <span key={tech} className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 text-[10px] border border-slate-700/40 font-mono">
@@ -533,17 +592,20 @@ export default function Agents() {
                       </span>
                     ))}
                   </div>
-
-                  {/* Status badge */}
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${agent.border} ${agent.activeBg} mb-3`}>
                     <div className={`w-2 h-2 rounded-full bg-gradient-to-r ${agent.gradient} animate-pulse`} />
                     <span className={`text-xs font-semibold ${agent.textColor}`}>Online · Ready</span>
                   </div>
-
-                  {/* CTA */}
+                  {/* Session indicator */}
+                  {sessionId && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600 mt-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span>History saved · Session #{sessionId}</span>
+                    </div>
+                  )}
                   {agent.available && agent.chatHref && (
                     <Link href={agent.chatHref}>
-                      <Button className={`w-full bg-gradient-to-r ${agent.gradient} text-white border-0 gap-2 shadow-lg`}>
+                      <Button className={`w-full mt-3 bg-gradient-to-r ${agent.gradient} text-white border-0 gap-2 shadow-lg`}>
                         <Sparkles className="h-4 w-4" />
                         Full Experience
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -555,7 +617,7 @@ export default function Agents() {
             </AnimatePresence>
           </div>
 
-          {/* Right: Chat panel — wider (3/4 of grid) */}
+          {/* Right: Chat panel */}
           <div className="lg:col-span-3">
             <AnimatePresence mode="wait">
               <motion.div
@@ -568,16 +630,14 @@ export default function Agents() {
                 style={{ height: "calc(100vh - 175px)", minHeight: "560px" }}
               >
                 {/* Chat header */}
-                <div className={`flex items-center gap-3 px-4 py-3 border-b border-slate-800/60 bg-[#060d1b]/40`}>
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/60 bg-[#060d1b]/40">
                   <div className="relative">
                     <img src={agent.avatar} alt={agent.name} className="w-8 h-8 rounded-xl object-cover" />
-                    <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#060d1b] bg-emerald-400`} />
+                    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#060d1b] bg-emerald-400" />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-white">{agent.name}</p>
-                    <p className={`text-xs text-emerald-400`}>
-                      Online · Ready to chat
-                    </p>
+                    <p className="text-xs text-emerald-400">Online · Ready to chat</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1.5">
                     <div className={`h-1 w-8 rounded-full bg-gradient-to-r ${agent.gradient}`} />
@@ -585,7 +645,18 @@ export default function Agents() {
                 </div>
 
                 {/* Chat body */}
-                <AgentChat key={agent.id} agent={agent} />
+                {sessionQuery.isLoading ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+                  </div>
+                ) : (
+                  <AgentChat
+                    key={agent.id}
+                    agent={agent}
+                    sessionId={sessionId}
+                    initialMessages={initialMessages}
+                  />
+                )}
               </motion.div>
             </AnimatePresence>
           </div>

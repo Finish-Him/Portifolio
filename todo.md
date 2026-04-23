@@ -186,3 +186,15 @@
 - [x] Input e botões: altura 48px, fonte base
 - [x] Painel de info: compactado (avatar menor, texto menor)
 - [x] Salvar checkpoint v2.16
+
+## Fase 17: Melhorias UX no Chat /agents
+
+- [x] Botão "Copiar resposta" (clipboard) no canto superior direito de cada mensagem do assistente
+- [x] Contador de tempo de resposta: "Respondido em X.Xs" no rodapé de cada mensagem do assistente
+- [x] Schema DB: tabelas agents_chat_sessions e agents_chat_messages
+- [x] Procedures tRPC: agentsChat.getSession, agentsChat.saveMessage
+- [x] Carregar histórico da sessão ao abrir o agente (usuário logado e anônimo)
+- [x] Salvar cada mensagem no banco após envio/recebimento
+- [x] Sessão anônima via localStorage token (usuários não logados)
+- [x] 28 novos testes Vitest passando (97 total)
+- [x] Salvar checkpoint v2.17

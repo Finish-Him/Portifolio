@@ -10,6 +10,7 @@ import {
   createChatSession, getUserChatSessions, getChatSessionById,
   addChatMessage, getSessionMessages, getUserProgress, upsertUserProgress,
   saveContactLead,
+  getOrCreateAgentsSession, saveAgentsChatMessage, getAgentsChatHistory, findAgentsSession,
 } from "./db";
 import { notifyOwner } from "./_core/notification";
 
@@ -334,6 +335,60 @@ const imageRouter = router({
     }),
 });
 
+// ─── Agents Chat Router (page /agents) ───
+const agentsChatRouter = router({
+  /** Get or create a session and return its id + message history */
+  getSession: publicProcedure
+    .input(z.object({
+      agentId: z.string(),
+      sessionToken: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const userId = ctx.user?.id ?? null;
+        const sessionId = await getOrCreateAgentsSession({
+          agentId: input.agentId,
+          userId,
+          sessionToken: input.sessionToken ?? null,
+        });
+        const messages = await getAgentsChatHistory({ sessionId, limit: 50 });
+        return {
+          sessionId,
+          messages: messages.map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: m.createdAt.getTime(),
+            latencyMs: m.latencyMs ?? undefined,
+          })),
+        };
+      } catch {
+        return { sessionId: null, messages: [] };
+      }
+    }),
+
+  /** Save a user or assistant message */
+  saveMessage: publicProcedure
+    .input(z.object({
+      sessionId: z.number(),
+      role: z.enum(["user", "assistant"]),
+      content: z.string().min(1),
+      latencyMs: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        await saveAgentsChatMessage({
+          sessionId: input.sessionId,
+          role: input.role,
+          content: input.content,
+          latencyMs: input.latencyMs ?? null,
+        });
+        return { ok: true };
+      } catch {
+        return { ok: false };
+      }
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -351,6 +406,7 @@ export const appRouter = router({
   tts: ttsRouter,
   image: imageRouter,
   contact: contactRouter,
+  agentsChat: agentsChatRouter,
 });
 
 export type AppRouter = typeof appRouter;
